@@ -4056,6 +4056,7 @@ ClrDataMethodInstance::GetTypeArgumentByIndex(
     return status;
 }
 
+// Brian: this seems to return all the ILOffsets that have a valid ILoffset->NativeOffset mapping
 HRESULT STDMETHODCALLTYPE
 ClrDataMethodInstance::GetILOffsetsByAddress(
     /* [in] */ CLRDATA_ADDRESS address,
@@ -4097,6 +4098,8 @@ ClrDataMethodInstance::GetILOffsetsByAddress(
                 ((((LONG)map[i].ilOffset == ICorDebugInfo::EPILOG || i == (numMap - 1)) && map[i].nativeEndOffset == 0) ||
                     codeOffset < map[i].nativeEndOffset))
             {
+                // Brian:: What are we trying to do with this codeOffset?
+                // Answer:: the start/end native offsets are relative offset (not an absolute address)
                 hits++;
 
                 if (offsetsLen && ilOffsets)
@@ -4133,7 +4136,7 @@ ClrDataMethodInstance::GetILOffsetsByAddress(
     DAC_LEAVE();
     return status;
 }
-
+// Brian: this seems to return all the intervals of native offsets defined for the given ILOffset
 HRESULT STDMETHODCALLTYPE
 ClrDataMethodInstance::GetAddressRangesByILOffset(
     /* [in] */ ULONG32 ilOffset,
