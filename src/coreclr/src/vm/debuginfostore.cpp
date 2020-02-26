@@ -689,7 +689,7 @@ void CompressDebugInfo::RestoreBoundariesAndVars(
             // Main decompression routine.
             DoBounds(t, cNumEntries, pMap);
             *ppMap = GetOldBounds(fpNew, pNewData, &cNumEntries, pMap);
-            delete pMap;
+            //delete pMap;
         }
         
         if (pcMap != NULL)
