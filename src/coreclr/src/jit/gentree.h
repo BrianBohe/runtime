@@ -5396,12 +5396,12 @@ struct GenTreeILOffset : public GenTree
 struct Statement
 {
 public:
-    Statement(GenTree* expr, IL_OFFSETX offset DEBUGARG(unsigned stmtID))
+    Statement(GenTree* expr, InlineContext* inlineContex, IL_OFFSETX offset DEBUGARG(unsigned stmtID))
         : m_rootNode(expr)
         , m_treeList(nullptr)
         , m_next(nullptr)
         , m_prev(nullptr)
-        , m_inlineContext(nullptr)
+        , m_inlineContext(inlineContex)
         , m_ILOffsetX(offset)
 #ifdef DEBUG
         , m_lastILOffset(BAD_IL_OFFSET)

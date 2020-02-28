@@ -2466,7 +2466,7 @@ public:
     */
 
     // Functions to create nodes
-    Statement* gtNewStmt(GenTree* expr = nullptr, IL_OFFSETX offset = BAD_IL_OFFSET);
+    Statement* gtNewStmt(GenTree* expr = nullptr, InlineContext* inlineContext, IL_OFFSETX offset = BAD_IL_OFFSET);
 
     // For unary opers.
     GenTree* gtNewOperNode(genTreeOps oper, var_types type, GenTree* op1, bool doSimplifications = TRUE);

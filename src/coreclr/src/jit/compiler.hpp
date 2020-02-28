@@ -942,9 +942,9 @@ inline GenTree::GenTree(genTreeOps oper, var_types type DEBUGARG(bool largeNode)
 
 /*****************************************************************************/
 
-inline Statement* Compiler::gtNewStmt(GenTree* expr, IL_OFFSETX offset)
+inline Statement* Compiler::gtNewStmt(GenTree* expr, InlineContext* inlineContext, IL_OFFSETX offset)
 {
-    Statement* stmt = new (this->getAllocator(CMK_ASTNode)) Statement(expr, offset DEBUGARG(compStatementID++));
+    Statement* stmt = new (this->getAllocator(CMK_ASTNode)) Statement(expr, inlineContext, offset DEBUGARG(compStatementID++));
     return stmt;
 }
 
