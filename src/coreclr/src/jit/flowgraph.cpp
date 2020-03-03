@@ -23522,8 +23522,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     assert(callContext != nullptr);
     for (Statement* addedStmt = callStmt->GetNextStmt(); addedStmt != postStmt; addedStmt = addedStmt->GetNextStmt())
     {
-        assert(addedStmt->GetInlineContext() == nullptr);
-        addedStmt->SetInlineContext(callContext);
+        assert(addedStmt->GetInlineContext() == callContext);
     }
 
     return afterStmt;
