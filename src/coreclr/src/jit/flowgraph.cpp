@@ -631,7 +631,11 @@ void Compiler::fgInsertStmtAtBeg(BasicBlock* block, Statement* stmt)
 //   tree  - the tree to be inserted.
 //
 // Return Value:
-//    The new created statement with `tree` inserted into `block`.
+//   The new created statement with `tree` inserted into `block`.
+//
+// Note:
+//   The new stmt will be considered to be part of the main jitted function
+//   so it will have nullptr inline Context
 //
 Statement* Compiler::fgNewStmtAtBeg(BasicBlock* block, GenTree* tree)
 {
@@ -649,6 +653,8 @@ Statement* Compiler::fgNewStmtAtBeg(BasicBlock* block, GenTree* tree)
 //
 // Note:
 //   If the block can be a conditional block, use fgInsertStmtNearEnd.
+//   The new stmt will be considered to be part of the main jitted function
+//   so it will have nullptr inline Context
 //
 void Compiler::fgInsertStmtAtEnd(BasicBlock* block, Statement* stmt)
 {
@@ -687,6 +693,8 @@ void Compiler::fgInsertStmtAtEnd(BasicBlock* block, Statement* stmt)
 //
 // Note:
 //   If the block can be a conditional block, use fgNewStmtNearEnd.
+//   The new stmt will be considered to be part of the main jitted function
+//   so it will have nullptr inline Context
 //
 Statement* Compiler::fgNewStmtAtEnd(BasicBlock* block, GenTree* tree)
 {
@@ -772,6 +780,10 @@ void Compiler::fgInsertStmtNearEnd(BasicBlock* block, Statement* stmt)
 //
 // Return Value:
 //    The new created statement with `tree` inserted into `block`.
+//
+// Note:
+//   The new stmt will be considered to be part of the main jitted function
+//   so it will have nullptr inline Context
 //
 Statement* Compiler::fgNewStmtNearEnd(BasicBlock* block, GenTree* tree)
 {
@@ -3858,6 +3870,7 @@ bool Compiler::fgCreateGCPoll(GCPollType pollType, BasicBlock* block, Statement*
 
             // Set the GC_POLL statement to have the same IL offset at the subsequent one.
             newStmt->SetILOffsetX(stmt->GetILOffsetX());
+            newStmt->SetInlineContext(stmt->GetInlineContext());
             fgInsertStmtBefore(block, stmt, newStmt);
         }
         else if (block->bbJumpKind == BBJ_ALWAYS)
@@ -3892,6 +3905,7 @@ bool Compiler::fgCreateGCPoll(GCPollType pollType, BasicBlock* block, Statement*
             {
                 // Is it possible for gtNextStmt to be NULL?
                 newStmt->SetILOffsetX(nextStmt->GetILOffsetX());
+                newStmt->SetILOffsetX(nextStmt->GetInlineContext());
             }
         }
 
@@ -9128,9 +9142,10 @@ void Compiler::fgAddInternal()
  *
  *  Create a new statement from tree and wire the links up.
  */
-Statement* Compiler::fgNewStmtFromTree(GenTree* tree, BasicBlock* block, IL_OFFSETX offs)
+Statement* Compiler::fgNewStmtFromTree(GenTree* tree, BasicBlock* block, IL_OFFSETX offs, InlineContext* inlineContext)
 {
-    Statement* stmt = gtNewStmt(tree, offs);
+    // Brian : decide if we should change / add a new constructor and who is creating Stmts
+    Statement* stmt = gtNewStmt(tree, inlineContext, offs);
 
     if (fgStmtListThreaded)
     {
@@ -14398,7 +14413,7 @@ bool Compiler::fgOptimizeUncondBranchToSimpleCond(BasicBlock* block, BasicBlock*
     // Duplicate the target block at the end of this block
     GenTree* cloned = gtCloneExpr(stmt->GetRootNode());
     noway_assert(cloned);
-    Statement* jmpStmt = gtNewStmt(cloned);
+    Statement* jmpStmt = gtNewStmt(cloned, stmt->GetInlineContext());
 
     block->bbJumpKind = BBJ_COND;
     block->bbJumpDest = target->bbJumpDest;
@@ -23150,6 +23165,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
 {
     BasicBlock*  block        = inlineInfo->iciBlock;
     Statement*   callStmt     = inlineInfo->iciStmt;
+    InlineContext* callContext = callStmt->GetInlineContext();
     IL_OFFSETX   callILOffset = callStmt->GetILOffsetX();
     Statement*   postStmt     = callStmt->GetNextStmt();
     Statement*   afterStmt    = callStmt; // afterStmt is the place where the new statements should be inserted after.
@@ -23305,7 +23321,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                         // Don't put GT_OBJ node under a GT_COMMA.
                         // Codegen can't deal with it.
                         // Just hang the address here in case there are side-effect.
-                        newStmt = gtNewStmt(gtUnusedValNode(argNode->AsOp()->gtOp1), callILOffset);
+                        newStmt = gtNewStmt(gtUnusedValNode(argNode->AsOp()->gtOp1), callContext, callILOffset);
                     }
                     else
                     {
@@ -23381,7 +23397,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                         // just append the arg node as an unused value.
                         if (newStmt == nullptr)
                         {
-                            newStmt = gtNewStmt(gtUnusedValNode(argNode), callILOffset);
+                            newStmt = gtNewStmt(gtUnusedValNode(argNode), callContext, callILOffset);
                         }
 
                         fgInsertStmtAfter(block, afterStmt, newStmt);
@@ -23426,7 +23442,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
         }
 
         tree    = fgGetSharedCCtor(exactClass);
-        newStmt = gtNewStmt(tree, callILOffset);
+        newStmt = gtNewStmt(tree, callContext, callILOffset);
         fgInsertStmtAfter(block, afterStmt, newStmt);
         afterStmt = newStmt;
     }
@@ -23434,7 +23450,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     // Insert the nullcheck statement now.
     if (nullcheck)
     {
-        newStmt = gtNewStmt(nullcheck, callILOffset);
+        newStmt = gtNewStmt(nullcheck, callContext, callILOffset);
         fgInsertStmtAfter(block, afterStmt, newStmt);
         afterStmt = newStmt;
     }
@@ -23500,7 +23516,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                                           false,                         // isVolatile
                                           false);                        // not copyBlock
 
-                    newStmt = gtNewStmt(tree, callILOffset);
+                    newStmt = gtNewStmt(tree, callContext, callILOffset);
                     fgInsertStmtAfter(block, afterStmt, newStmt);
                     afterStmt = newStmt;
                 }
@@ -23515,13 +23531,11 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
         }
     }
 
-    // Update any newly added statements with the appropriate context.
-    InlineContext* context = callStmt->GetInlineContext();
+    // Any newly added statements should have the call stmt inline context
     assert(context != nullptr);
     for (Statement* addedStmt = callStmt->GetNextStmt(); addedStmt != postStmt; addedStmt = addedStmt->GetNextStmt())
     {
-        assert(addedStmt->GetInlineContext() == nullptr);
-        addedStmt->SetInlineContext(context);
+        assert(addedStmt->GetInlineContext() == callContext);
     }
 
     return afterStmt;

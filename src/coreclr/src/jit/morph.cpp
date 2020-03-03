@@ -7781,13 +7781,14 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
     // Transform recursive tail call into a loop.
 
     Statement* earlyArgInsertionPoint = lastStmt;
+    InlineContext* callContext = lastStmt->GetInlineContext();
     IL_OFFSETX callILOffset           = lastStmt->GetILOffsetX();
 
     // Hoist arg setup statement for the 'this' argument.
     GenTreeCall::Use* thisArg = recursiveTailCall->gtCallThisArg;
     if ((thisArg != nullptr) && !thisArg->GetNode()->IsNothingNode() && !thisArg->GetNode()->IsArgPlaceHolderNode())
     {
-        Statement* thisArgStmt = gtNewStmt(thisArg->GetNode(), callILOffset);
+        Statement* thisArgStmt = gtNewStmt(thisArg->GetNode(), callContext, callILOffset);
         fgInsertStmtBefore(block, earlyArgInsertionPoint, thisArgStmt);
     }
 
@@ -7845,7 +7846,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
             if ((earlyArg->gtFlags & GTF_LATE_ARG) != 0)
             {
                 // This is a setup node so we need to hoist it.
-                Statement* earlyArgStmt = gtNewStmt(earlyArg, callILOffset);
+                Statement* earlyArgStmt = gtNewStmt(earlyArg, callContext, callILOffset);
                 fgInsertStmtBefore(block, earlyArgInsertionPoint, earlyArgStmt);
             }
             else
@@ -7853,7 +7854,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
                 // This is an actual argument that needs to be assigned to the corresponding caller parameter.
                 fgArgTabEntry* curArgTabEntry = gtArgEntryByArgNum(recursiveTailCall, earlyArgIndex);
                 Statement*     paramAssignStmt =
-                    fgAssignRecursiveCallArgToCallerParam(earlyArg, curArgTabEntry, block, callILOffset,
+                    fgAssignRecursiveCallArgToCallerParam(earlyArg, curArgTabEntry, block, callContext, callILOffset,
                                                           tmpAssignmentInsertionPoint, paramAssignmentInsertionPoint);
                 if ((tmpAssignmentInsertionPoint == lastStmt) && (paramAssignStmt != nullptr))
                 {
@@ -7873,7 +7874,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
         GenTree*       lateArg        = use.GetNode();
         fgArgTabEntry* curArgTabEntry = gtArgEntryByLateArgIndex(recursiveTailCall, lateArgIndex);
         Statement*     paramAssignStmt =
-            fgAssignRecursiveCallArgToCallerParam(lateArg, curArgTabEntry, block, callILOffset,
+            fgAssignRecursiveCallArgToCallerParam(lateArg, curArgTabEntry, block, callContext, callILOffset,
                                                   tmpAssignmentInsertionPoint, paramAssignmentInsertionPoint);
 
         if ((tmpAssignmentInsertionPoint == lastStmt) && (paramAssignStmt != nullptr))
@@ -7892,7 +7893,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
         var_types  thisType           = lvaTable[info.compThisArg].TypeGet();
         GenTree*   arg0               = gtNewLclvNode(lvaArg0Var, thisType);
         GenTree*   arg0Assignment     = gtNewAssignNode(arg0, gtNewLclvNode(info.compThisArg, thisType));
-        Statement* arg0AssignmentStmt = gtNewStmt(arg0Assignment, callILOffset);
+        Statement* arg0AssignmentStmt = gtNewStmt(arg0Assignment, inlineContext, callILOffset);
         fgInsertStmtBefore(block, paramAssignmentInsertionPoint, arg0AssignmentStmt);
     }
 
@@ -7933,7 +7934,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
                         GenTree* zero = gtNewZeroConNode(genActualType(lclType));
                         init          = gtNewAssignNode(lcl, zero);
                     }
-                    Statement* initStmt = gtNewStmt(init, callILOffset);
+                    Statement* initStmt = gtNewStmt(init, inlineContext, callILOffset);
                     fgInsertStmtBefore(block, lastStmt, initStmt);
                 }
             }
@@ -7964,6 +7965,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
 //    arg  -  argument to assign
 //    argTabEntry  -  argument table entry corresponding to arg
 //    block  --- basic block the call is in
+//    callContext  -  IL offset of the call
 //    callILOffset  -  IL offset of the call
 //    tmpAssignmentInsertionPoint  -  tree before which temp assignment should be inserted (if necessary)
 //    paramAssignmentInsertionPoint  -  tree before which parameter assignment should be inserted
@@ -7974,6 +7976,7 @@ void Compiler::fgMorphRecursiveFastTailCallIntoLoop(BasicBlock* block, GenTreeCa
 Statement* Compiler::fgAssignRecursiveCallArgToCallerParam(GenTree*       arg,
                                                            fgArgTabEntry* argTabEntry,
                                                            BasicBlock*    block,
+                                                           InlineContext* callContext,
                                                            IL_OFFSETX     callILOffset,
                                                            Statement*     tmpAssignmentInsertionPoint,
                                                            Statement*     paramAssignmentInsertionPoint)
@@ -8027,7 +8030,7 @@ Statement* Compiler::fgAssignRecursiveCallArgToCallerParam(GenTree*       arg,
             GenTree*   tempSrc       = arg;
             GenTree*   tempDest      = gtNewLclvNode(tmpNum, tempSrc->gtType);
             GenTree*   tmpAssignNode = gtNewAssignNode(tempDest, tempSrc);
-            Statement* tmpAssignStmt = gtNewStmt(tmpAssignNode, callILOffset);
+            Statement* tmpAssignStmt = gtNewStmt(tmpAssignNode, callContext, callILOffset);
             fgInsertStmtBefore(block, tmpAssignmentInsertionPoint, tmpAssignStmt);
             argInTemp = gtNewLclvNode(tmpNum, tempSrc->gtType);
         }
@@ -8037,7 +8040,7 @@ Statement* Compiler::fgAssignRecursiveCallArgToCallerParam(GenTree*       arg,
         assert(paramDsc->lvIsParam);
         GenTree* paramDest       = gtNewLclvNode(originalArgNum, paramDsc->lvType);
         GenTree* paramAssignNode = gtNewAssignNode(paramDest, argInTemp);
-        paramAssignStmt          = gtNewStmt(paramAssignNode, callILOffset);
+        paramAssignStmt          = gtNewStmt(paramAssignNode, callContext, callILOffset);
 
         fgInsertStmtBefore(block, paramAssignmentInsertionPoint, paramAssignStmt);
     }
@@ -8102,7 +8105,7 @@ GenTree* Compiler::fgMorphCall(GenTreeCall* call)
             assg = fgMorphTree(assg);
 
             // Create the assignment statement and insert it before the current statement.
-            Statement* assgStmt = gtNewStmt(assg, compCurStmt->GetILOffsetX());
+            Statement* assgStmt = gtNewStmt(assg, compCurStmt->getInlineContext(), compCurStmt->GetILOffsetX());
             fgInsertStmtBefore(compCurBB, compCurStmt, assgStmt);
 
             // Return the temp.
@@ -15569,7 +15572,7 @@ void Compiler::fgMorphBlocks()
                         {
                             // gtNewTempAssign inserted additional statements after last
                             fgRemoveStmt(block, lastStmt);
-                            Statement* newStmt = gtNewStmt(tree, offset);
+                            Statement* newStmt = gtNewStmt(tree, lastStmt->GetInlineContext(), offset);
                             fgInsertStmtAfter(block, pAfterStatement, newStmt);
                             lastStmt = newStmt;
                         }
