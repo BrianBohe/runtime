@@ -281,8 +281,7 @@ void Compiler::fgInstrumentMethod()
 
             GenTreeCall::Use* args = gtNewCallArgs(gtNewIconEmbMethHndNode(info.compMethodHnd));
             GenTree*          call = gtNewHelperCallNode(CORINFO_HELP_BBT_FCN_ENTER, TYP_VOID, args);
-
-            stmt = gtNewStmt(call);
+            stmt                   = gtNewStmt(call, m_inlineStrategy->GetRootContext());
         }
         else
         {
@@ -374,7 +373,7 @@ void Compiler::fgInstrumentMethod()
         GenTree* relop = gtNewOperNode(GT_NE, TYP_INT, valueNode, gtNewIconNode(0, TYP_INT));
         GenTree* colon = new (this, GT_COLON) GenTreeColon(TYP_VOID, gtNewNothingNode(), call);
         GenTree* cond  = gtNewQmarkNode(TYP_VOID, relop, colon);
-        stmt           = gtNewStmt(cond);
+        stmt           = gtNewStmt(cond, m_inlineStrategy->GetRootContext());
     }
 
     fgEnsureFirstBBisScratch();
