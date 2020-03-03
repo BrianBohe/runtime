@@ -714,13 +714,13 @@ inline void Compiler::impInsertStmtBefore(Statement* stmt, Statement* stmtBefore
  *  Return the newly created statement.
  */
 
-Statement* Compiler::impAppendTree(GenTree* tree, unsigned chkLevel, IL_OFFSETX offset)
+Statement* Compiler::impAppendTree(GenTree* tree, unsigned chkLevel, InlineContext* treeContext, IL_OFFSETX offset)
 {
     assert(tree);
 
     /* Allocate an 'expression statement' node */
 
-    Statement* stmt = gtNewStmt(tree, offset);
+    Statement* stmt = gtNewStmt(tree, treeContext, offset);
 
     /* Append the statement to the current block's stmt list */
 
@@ -771,7 +771,7 @@ void Compiler::impAssignTempGen(unsigned    tmp,
         }
         else
         {
-            impAppendTree(asg, curLevel, impCurStmtOffs);
+            impAppendTree(asg, curLevel, impCurStmt->GetInlineContext(), impCurStmtOffs);
         }
     }
 }
@@ -784,6 +784,7 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
                                 GenTree*             val,
                                 CORINFO_CLASS_HANDLE structType,
                                 unsigned             curLevel,
+                                InlineContext*       valContext,
                                 Statement**          pAfterStmt, /* = NULL */
                                 IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                 BasicBlock*          block       /* = NULL */
@@ -826,13 +827,13 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
     {
         if (pAfterStmt)
         {
-            Statement* asgStmt = gtNewStmt(asg, ilOffset);
+            Statement* asgStmt = gtNewStmt(asg, valContext, ilOffset);
             fgInsertStmtAfter(block, *pAfterStmt, asgStmt);
             *pAfterStmt = asgStmt;
         }
         else
         {
-            impAppendTree(asg, curLevel, impCurStmtOffs);
+            impAppendTree(asg, curLevel, valContext, impCurStmtOffs);
         }
     }
 }
