@@ -2466,7 +2466,9 @@ public:
     */
 
     // Functions to create nodes
-    Statement* gtNewStmt(GenTree* expr = nullptr, InlineContext* inlineContext, IL_OFFSETX offset = BAD_IL_OFFSET);
+    Statement* gtNewStmt(GenTree*       expr          = nullptr,
+                         InlineContext* inlineContext = nullptr,
+                         IL_OFFSETX     offset        = BAD_IL_OFFSET);
 
     // For unary opers.
     GenTree* gtNewOperNode(genTreeOps oper, var_types type, GenTree* op1, bool doSimplifications = TRUE);
@@ -2686,7 +2688,7 @@ public:
     Statement* gtCloneStmt(Statement* stmt)
     {
         GenTree* exprClone = gtCloneExpr(stmt->GetRootNode());
-        return gtNewStmt(exprClone, stmt->GetILOffsetX());
+        return gtNewStmt(exprClone, stmt->GetInlineContext(), stmt->GetILOffsetX());
     }
 
     // Internal helper for cloning a call
@@ -5461,6 +5463,7 @@ private:
     Statement* fgAssignRecursiveCallArgToCallerParam(GenTree*       arg,
                                                      fgArgTabEntry* argTabEntry,
                                                      BasicBlock*    block,
+                                                     InlineContext* callContext,
                                                      IL_OFFSETX     callILOffset,
                                                      Statement*     tmpAssignmentInsertionPoint,
                                                      Statement*     paramAssignmentInsertionPoint);

@@ -23148,13 +23148,14 @@ _Done:
 
 Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
 {
-    BasicBlock*  block        = inlineInfo->iciBlock;
-    Statement*   callStmt     = inlineInfo->iciStmt;
-    IL_OFFSETX   callILOffset = callStmt->GetILOffsetX();
-    Statement*   postStmt     = callStmt->GetNextStmt();
-    Statement*   afterStmt    = callStmt; // afterStmt is the place where the new statements should be inserted after.
-    Statement*   newStmt      = nullptr;
-    GenTreeCall* call         = inlineInfo->iciCall->AsCall();
+    BasicBlock*    block        = inlineInfo->iciBlock;
+    Statement*     callStmt     = inlineInfo->iciStmt;
+    InlineContext* callContext  = callStmt->GetInlineContext();
+    IL_OFFSETX     callILOffset = callStmt->GetILOffsetX();
+    Statement*     postStmt     = callStmt->GetNextStmt();
+    Statement*     afterStmt    = callStmt; // afterStmt is the place where the new statements should be inserted after.
+    Statement*     newStmt      = nullptr;
+    GenTreeCall*   call         = inlineInfo->iciCall->AsCall();
 
     noway_assert(call->gtOper == GT_CALL);
 
@@ -23305,7 +23306,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                         // Don't put GT_OBJ node under a GT_COMMA.
                         // Codegen can't deal with it.
                         // Just hang the address here in case there are side-effect.
-                        newStmt = gtNewStmt(gtUnusedValNode(argNode->AsOp()->gtOp1), callILOffset);
+                        newStmt = gtNewStmt(gtUnusedValNode(argNode->AsOp()->gtOp1), callContext, callILOffset);
                     }
                     else
                     {
@@ -23381,7 +23382,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                         // just append the arg node as an unused value.
                         if (newStmt == nullptr)
                         {
-                            newStmt = gtNewStmt(gtUnusedValNode(argNode), callILOffset);
+                            newStmt = gtNewStmt(gtUnusedValNode(argNode), callContext, callILOffset);
                         }
 
                         fgInsertStmtAfter(block, afterStmt, newStmt);
@@ -23426,7 +23427,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
         }
 
         tree    = fgGetSharedCCtor(exactClass);
-        newStmt = gtNewStmt(tree, callILOffset);
+        newStmt = gtNewStmt(tree, callContext, callILOffset);
         fgInsertStmtAfter(block, afterStmt, newStmt);
         afterStmt = newStmt;
     }
@@ -23434,7 +23435,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     // Insert the nullcheck statement now.
     if (nullcheck)
     {
-        newStmt = gtNewStmt(nullcheck, callILOffset);
+        newStmt = gtNewStmt(nullcheck, callContext, callILOffset);
         fgInsertStmtAfter(block, afterStmt, newStmt);
         afterStmt = newStmt;
     }
@@ -23500,7 +23501,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                                           false,                         // isVolatile
                                           false);                        // not copyBlock
 
-                    newStmt = gtNewStmt(tree, callILOffset);
+                    newStmt = gtNewStmt(tree, callContext, callILOffset);
                     fgInsertStmtAfter(block, afterStmt, newStmt);
                     afterStmt = newStmt;
                 }
@@ -23516,12 +23517,11 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     }
 
     // Update any newly added statements with the appropriate context.
-    InlineContext* context = callStmt->GetInlineContext();
-    assert(context != nullptr);
+    assert(callContext != nullptr);
     for (Statement* addedStmt = callStmt->GetNextStmt(); addedStmt != postStmt; addedStmt = addedStmt->GetNextStmt())
     {
         assert(addedStmt->GetInlineContext() == nullptr);
-        addedStmt->SetInlineContext(context);
+        addedStmt->SetInlineContext(callContext);
     }
 
     return afterStmt;
@@ -23592,6 +23592,7 @@ void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* bloc
     JITDUMP("fgInlineAppendStatements: nulling out gc ref inlinee locals.\n");
 
     Statement*           callStmt          = inlineInfo->iciStmt;
+    InlineContext*       callContext       = callStmt->GetInlineContext();
     IL_OFFSETX           callILOffset      = callStmt->GetILOffsetX();
     CORINFO_METHOD_INFO* InlineeMethodInfo = InlineeCompiler->info.compMethodInfo;
     const unsigned       lclCnt            = InlineeMethodInfo->locals.numArgs;
@@ -23641,7 +23642,7 @@ void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* bloc
 
         // Assign null to the local.
         GenTree*   nullExpr = gtNewTempAssign(tmpNum, gtNewZeroConNode(lclTyp));
-        Statement* nullStmt = gtNewStmt(nullExpr, callILOffset);
+        Statement* nullStmt = gtNewStmt(nullExpr, callContext, callILOffset);
 
         if (stmtAfter == nullptr)
         {

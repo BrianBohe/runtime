@@ -924,7 +924,7 @@ private:
             origCall->gtCallArgs = argsIter.GetUse();
 
             GenTree*   asg     = compiler->gtNewTempAssign(resultLclNum, resultHandle);
-            Statement* asgStmt = compiler->gtNewStmt(asg, stmt->GetILOffsetX());
+            Statement* asgStmt = compiler->gtNewStmt(asg, stmt->GetInlineContext(), stmt->GetILOffsetX());
             compiler->fgInsertStmtAtEnd(thenBlock, asgStmt);
         }
 
@@ -935,7 +935,7 @@ private:
         {
             elseBlock          = CreateAndInsertBasicBlock(BBJ_NONE, thenBlock);
             GenTree*   asg     = compiler->gtNewTempAssign(resultLclNum, origCall);
-            Statement* asgStmt = compiler->gtNewStmt(asg, stmt->GetILOffsetX());
+            Statement* asgStmt = compiler->gtNewStmt(asg, stmt->GetInlineContext(), stmt->GetILOffsetX());
             compiler->fgInsertStmtAtEnd(elseBlock, asgStmt);
         }
 
