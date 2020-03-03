@@ -14400,7 +14400,7 @@ bool Compiler::fgOptimizeUncondBranchToSimpleCond(BasicBlock* block, BasicBlock*
     // Duplicate the target block at the end of this block
     GenTree* cloned = gtCloneExpr(stmt->GetRootNode());
     noway_assert(cloned);
-    Statement* jmpStmt = gtNewStmt(cloned);
+    Statement* jmpStmt = gtNewStmt(cloned, stmt->GetInlineContext());
 
     block->bbJumpKind = BBJ_COND;
     block->bbJumpDest = target->bbJumpDest;
