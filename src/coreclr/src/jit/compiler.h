@@ -2466,7 +2466,7 @@ public:
     */
 
     // Functions to create nodes
-    Statement* gtNewStmt(GenTree* expr = nullptr, InlineContext* inlineContext, IL_OFFSETX offset = BAD_IL_OFFSET);
+    Statement* gtNewStmt(GenTree* expr = nullptr, InlineContext* inlineContext = nullptr, IL_OFFSETX offset = BAD_IL_OFFSET);
 
     // For unary opers.
     GenTree* gtNewOperNode(genTreeOps oper, var_types type, GenTree* op1, bool doSimplifications = TRUE);
@@ -2636,6 +2636,7 @@ public:
 
     GenTree* gtNewTempAssign(unsigned    tmp,
                              GenTree*    val,
+                             InlineContext* valContext,
                              Statement** pAfterStmt = nullptr,
                              IL_OFFSETX  ilOffset   = BAD_IL_OFFSET,
                              BasicBlock* block      = nullptr);
@@ -2686,7 +2687,7 @@ public:
     Statement* gtCloneStmt(Statement* stmt)
     {
         GenTree* exprClone = gtCloneExpr(stmt->GetRootNode());
-        return gtNewStmt(exprClone, stmt->GetILOffsetX());
+        return gtNewStmt(exprClone, stmt->GetInlineContext(), stmt->GetILOffsetX());
     }
 
     // Internal helper for cloning a call
@@ -3755,8 +3756,8 @@ public:
     void impAppendStmt(Statement* stmt, unsigned chkLevel);
     void impAppendStmt(Statement* stmt);
     void impInsertStmtBefore(Statement* stmt, Statement* stmtBefore);
-    Statement* impAppendTree(GenTree* tree, unsigned chkLevel, IL_OFFSETX offset);
-    void impInsertTreeBefore(GenTree* tree, IL_OFFSETX offset, Statement* stmtBefore);
+    Statement* impAppendTree(GenTree* tree, unsigned chkLevel, InlineContext* treeContext, IL_OFFSETX offset);
+    void impInsertTreeBefore(GenTree* tree, InlineContext* treeContext, IL_OFFSETX offset, Statement* stmtBefore);
     void impAssignTempGen(unsigned    tmp,
                           GenTree*    val,
                           unsigned    curLevel,
@@ -5296,11 +5297,11 @@ public:
 
 public:
     void fgInsertStmtAtEnd(BasicBlock* block, Statement* stmt);
-    Statement* fgNewStmtAtEnd(BasicBlock* block, GenTree* tree);
+    Statement* fgNewStmtAtEnd(BasicBlock* block, GenTree* tree, InlineContext* treeContext = nullptr);
 
 private:
     void fgInsertStmtNearEnd(BasicBlock* block, Statement* stmt);
-    Statement* fgNewStmtNearEnd(BasicBlock* block, GenTree* tree);
+    Statement* fgNewStmtNearEnd(BasicBlock* block, GenTree* tree, InlineContext* treeContext = nullptr);
 
     void fgInsertStmtAtBeg(BasicBlock* block, Statement* stmt);
     Statement* fgNewStmtAtBeg(BasicBlock* block, GenTree* tree);
@@ -6770,8 +6771,8 @@ protected:
 public:
     void optVnNonNullPropCurStmt(BasicBlock* block, Statement* stmt, GenTree* tree);
     fgWalkResult optVNConstantPropCurStmt(BasicBlock* block, Statement* stmt, GenTree* tree);
-    GenTree* optVNConstantPropOnJTrue(BasicBlock* block, GenTree* test);
-    GenTree* optVNConstantPropOnTree(BasicBlock* block, GenTree* tree);
+    GenTree* optVNConstantPropOnJTrue(BasicBlock* block, Statement *stmt, GenTree* test);
+    GenTree* optVNConstantPropOnTree(BasicBlock* block, Statement *stmt, GenTree* tree);
     GenTree* optExtractSideEffListFromConst(GenTree* tree);
 
     AssertionIndex GetAssertionCount()

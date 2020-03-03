@@ -281,8 +281,7 @@ void Compiler::fgInstrumentMethod()
 
             GenTreeCall::Use* args = gtNewCallArgs(gtNewIconEmbMethHndNode(info.compMethodHnd));
             GenTree*          call = gtNewHelperCallNode(CORINFO_HELP_BBT_FCN_ENTER, TYP_VOID, args);
-
-            stmt = gtNewStmt(call);
+            stmt = gtNewStmt(call, m_inlineStrategy->GetRootContext());
         }
         else
         {
@@ -374,7 +373,7 @@ void Compiler::fgInstrumentMethod()
         GenTree* relop = gtNewOperNode(GT_NE, TYP_INT, valueNode, gtNewIconNode(0, TYP_INT));
         GenTree* colon = new (this, GT_COLON) GenTreeColon(TYP_VOID, gtNewNothingNode(), call);
         GenTree* cond  = gtNewQmarkNode(TYP_VOID, relop, colon);
-        stmt           = gtNewStmt(cond);
+        stmt           = gtNewStmt(cond, m_inlineStrategy->GetRootContext());
     }
 
     fgEnsureFirstBBisScratch();
@@ -634,12 +633,12 @@ void Compiler::fgInsertStmtAtBeg(BasicBlock* block, Statement* stmt)
 //   The new created statement with `tree` inserted into `block`.
 //
 // Note:
-//   The new stmt will be considered to be part of the main jitted function
-//   so it will have nullptr inline Context
+//    The new created statement with `tree` inserted into `block`.
+//    The InlineContext of this statement will be the main jitted function's context.
 //
 Statement* Compiler::fgNewStmtAtBeg(BasicBlock* block, GenTree* tree)
 {
-    Statement* stmt = gtNewStmt(tree);
+    Statement* stmt = gtNewStmt(tree, m_inlineStrategy->GetRootContext());
     fgInsertStmtAtBeg(block, stmt);
     return stmt;
 }
@@ -687,18 +686,21 @@ void Compiler::fgInsertStmtAtEnd(BasicBlock* block, Statement* stmt)
 // Arguments:
 //   block - the block into which 'stmt' will be inserted;
 //   tree  - the tree to be inserted.
+//   treeContext - the tree's inline context. It is the main jitted function's inline context
+//      by default.
 //
 // Return Value:
 //    The new created statement with `tree` inserted into `block`.
 //
 // Note:
-//   If the block can be a conditional block, use fgNewStmtNearEnd.
-//   The new stmt will be considered to be part of the main jitted function
-//   so it will have nullptr inline Context
+//    If the block can be a conditional block, use fgNewStmtNearEnd.
+//    The InlineContext of this statement will be the main jitted function's context.
 //
-Statement* Compiler::fgNewStmtAtEnd(BasicBlock* block, GenTree* tree)
+Statement* Compiler::fgNewStmtAtEnd(BasicBlock* block, GenTree* tree, InlineContext* treeContext)
 {
-    Statement* stmt = gtNewStmt(tree);
+    if (treeContext == nullptr)
+        treeContext = m_inlineStrategy->GetRootContext();
+    Statement* stmt = gtNewStmt(tree, treeContext);
     fgInsertStmtAtEnd(block, stmt);
     return stmt;
 }
@@ -777,6 +779,8 @@ void Compiler::fgInsertStmtNearEnd(BasicBlock* block, Statement* stmt)
 // Arguments:
 //   block - the block into which 'stmt' will be inserted;
 //   tree  - the tree to be inserted.
+//   treeContext - the tree's inline context. It is the main jitted function's inline context
+//      by default.
 //
 // Return Value:
 //    The new created statement with `tree` inserted into `block`.
@@ -785,9 +789,11 @@ void Compiler::fgInsertStmtNearEnd(BasicBlock* block, Statement* stmt)
 //   The new stmt will be considered to be part of the main jitted function
 //   so it will have nullptr inline Context
 //
-Statement* Compiler::fgNewStmtNearEnd(BasicBlock* block, GenTree* tree)
+Statement* Compiler::fgNewStmtNearEnd(BasicBlock* block, GenTree* tree, InlineContext* treeContext)
 {
-    Statement* stmt = gtNewStmt(tree);
+    if (treeContext == nullptr)
+        treeContext = m_inlineStrategy->GetRootContext();
+    Statement* stmt = gtNewStmt(tree, treeContext);
     fgInsertStmtNearEnd(block, stmt);
     return stmt;
 }
@@ -3905,7 +3911,7 @@ bool Compiler::fgCreateGCPoll(GCPollType pollType, BasicBlock* block, Statement*
             {
                 // Is it possible for gtNextStmt to be NULL?
                 newStmt->SetILOffsetX(nextStmt->GetILOffsetX());
-                newStmt->SetILOffsetX(nextStmt->GetInlineContext());
+                newStmt->SetInlineContext(nextStmt->GetInlineContext());
             }
         }
 
@@ -8191,12 +8197,12 @@ GenTree* Compiler::fgCreateMonitorTree(unsigned lvaMonAcquired, unsigned lvaThis
         else
         {
             // Insert this immediately before the GT_RETURN
-            fgNewStmtNearEnd(block, tree);
+            fgNewStmtNearEnd(block, tree, block->lastStmt()->GetInlineContext());
         }
     }
     else
     {
-        fgNewStmtAtEnd(block, tree);
+        fgNewStmtAtEnd(block, tree, block->lastStmt()->GetInlineContext());
     }
 
     return tree;
@@ -22320,7 +22326,10 @@ Compiler::fgWalkResult Compiler::fgUpdateInlineReturnExpressionPlaceHolder(GenTr
                 const unsigned tmpNum =
                     comp->lvaGrabTemp(true DEBUGARG("small struct return temp for rejected inline"));
                 comp->lvaSetStruct(tmpNum, retClsHnd, false);
-                GenTree* assign = comp->gtNewTempAssign(tmpNum, call);
+                // Brian:: to correctly forward the InlineContext, the stmt should be sent to the WalkTree
+                // or a new one which take both GenTree and stmt should be added.
+                // By the moment use the root context, which may be wrong whether the inlinee candidate has failed or not.
+                GenTree* assign = comp->gtNewTempAssign(tmpNum, call, m_inlineStrategy->GetRootContext());
 
                 // Modify assign tree and call return types to the primitive return type
                 call->gtReturnType = returnType;
@@ -23272,7 +23281,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                     // argTmpNum here since in-linee compiler instance
                     // would have iterated over these and marked them
                     // accordingly.
-                    impAssignTempGen(tmpNum, argNode, structHnd, (unsigned)CHECK_SPILL_NONE, &afterStmt, callILOffset,
+                    impAssignTempGen(tmpNum, argNode, structHnd, (unsigned)CHECK_SPILL_NONE, callContext, &afterStmt, callILOffset,
                                      block);
 
                     // We used to refine the temp type here based on
@@ -23505,7 +23514,7 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
                     // Unsafe value cls check is not needed here since in-linee compiler instance would have
                     // iterated over locals and marked accordingly.
                     impAssignTempGen(tmpNum, gtNewZeroConNode(genActualType(lclTyp)), NO_CLASS_HANDLE,
-                                     (unsigned)CHECK_SPILL_NONE, &afterStmt, callILOffset, block);
+                                     (unsigned)CHECK_SPILL_NONE, callContext, &afterStmt, callILOffset, block);
                 }
                 else
                 {
@@ -23532,10 +23541,16 @@ Statement* Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
     }
 
     // Any newly added statements should have the call stmt inline context
-    assert(context != nullptr);
+    assert(callContext != nullptr);
     for (Statement* addedStmt = callStmt->GetNextStmt(); addedStmt != postStmt; addedStmt = addedStmt->GetNextStmt())
     {
         assert(addedStmt->GetInlineContext() == callContext);
+#ifdef DEBUG
+        if (verbose)
+        {
+            gtDispStmt(addedStmt, nullptr);
+        }
+#endif
     }
 
     return afterStmt;
@@ -23606,6 +23621,7 @@ void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* bloc
     JITDUMP("fgInlineAppendStatements: nulling out gc ref inlinee locals.\n");
 
     Statement*           callStmt          = inlineInfo->iciStmt;
+    InlineContext*       callContext       = callStmt->GetInlineContext();
     IL_OFFSETX           callILOffset      = callStmt->GetILOffsetX();
     CORINFO_METHOD_INFO* InlineeMethodInfo = InlineeCompiler->info.compMethodInfo;
     const unsigned       lclCnt            = InlineeMethodInfo->locals.numArgs;
@@ -23654,8 +23670,8 @@ void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* bloc
         }
 
         // Assign null to the local.
-        GenTree*   nullExpr = gtNewTempAssign(tmpNum, gtNewZeroConNode(lclTyp));
-        Statement* nullStmt = gtNewStmt(nullExpr, callILOffset);
+        GenTree*   nullExpr = gtNewTempAssign(tmpNum, gtNewZeroConNode(lclTyp), callContext);
+        Statement* nullStmt = gtNewStmt(nullExpr, callContext, callILOffset);
 
         if (stmtAfter == nullptr)
         {

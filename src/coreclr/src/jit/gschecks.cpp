@@ -568,7 +568,7 @@ void Compiler::gsParamsToShadows()
                     opAssign = gtNewAssignNode(dst, src);
                 }
 
-                (void)fgNewStmtNearEnd(block, fgMorphTree(opAssign));
+                (void)fgNewStmtNearEnd(block, fgMorphTree(opAssign), block->lastStmt()->GetInlineContext());
             }
         }
     }

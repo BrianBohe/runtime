@@ -299,7 +299,7 @@ void Compiler::optAddCopies()
             noway_assert(varDsc->lvDefStmt == nullptr || varDsc->lvIsStructField);
 
             // Create a new copy assignment tree
-            GenTree* copyAsgn = gtNewTempAssign(copyLclNum, gtNewLclvNode(lclNum, typ));
+            GenTree* copyAsgn = gtNewTempAssign(copyLclNum, gtNewLclvNode(lclNum, typ), m_inlineStrategy->GetRootContext());
 
             /* Find the best block to insert the new assignment     */
             /* We will choose the lowest weighted block, and within */
@@ -2377,13 +2377,13 @@ AssertionIndex Compiler::optAssertionIsSubtype(GenTree* tree, GenTree* methodTab
 //    the relop will evaluate to "true" or "false" statically, then the side-effects
 //    will be put into new statements, presuming the JTrue will be folded away.
 //
-GenTree* Compiler::optVNConstantPropOnTree(BasicBlock* block, GenTree* tree)
+GenTree* Compiler::optVNConstantPropOnTree(BasicBlock* block, Statement *stmt, GenTree* tree)
 {
     if (tree->OperGet() == GT_JTRUE)
     {
         // Treat JTRUE separately to extract side effects into respective statements rather
         // than using a COMMA separated op1.
-        return optVNConstantPropOnJTrue(block, tree);
+        return optVNConstantPropOnJTrue(block, stmt, tree);
     }
     // If relop is part of JTRUE, this should be optimized as part of the parent JTRUE.
     // Or if relop is part of QMARK or anything else, we simply bail here.
@@ -4102,7 +4102,7 @@ GenTree* Compiler::optAssertionProp(ASSERT_VALARG_TP assertions, GenTree* tree, 
 
             if (block != nullptr)
             {
-                return optVNConstantPropOnJTrue(block, tree);
+                return optVNConstantPropOnJTrue(block, stmt, tree);
             }
             return nullptr;
 
@@ -4821,6 +4821,7 @@ GenTree* Compiler::optExtractSideEffListFromConst(GenTree* tree)
 //
 // Arguments:
 //    block - The block that contains the JTrue.
+//    stmt  -  The statement in the block containing the tree.
 //    test  - The JTrue node whose relop evaluates to 0 or non-zero value.
 //
 // Return Value:
@@ -4843,7 +4844,7 @@ GenTree* Compiler::optExtractSideEffListFromConst(GenTree* tree)
 //  sensitive to adding new statements. Hence the change is not made directly
 //  into fgFoldConditional.
 //
-GenTree* Compiler::optVNConstantPropOnJTrue(BasicBlock* block, GenTree* test)
+GenTree* Compiler::optVNConstantPropOnJTrue(BasicBlock* block, Statement *stmt, GenTree* test)
 {
     GenTree* relop = test->gtGetOp1();
 
@@ -4891,12 +4892,12 @@ GenTree* Compiler::optVNConstantPropOnJTrue(BasicBlock* block, GenTree* test)
         Statement* newStmt;
         if (sideEffList->OperGet() == GT_COMMA)
         {
-            newStmt     = fgNewStmtNearEnd(block, sideEffList->gtGetOp1());
+            newStmt     = fgNewStmtNearEnd(block, sideEffList->gtGetOp1(), stmt->GetInlineContext());
             sideEffList = sideEffList->gtGetOp2();
         }
         else
         {
-            newStmt     = fgNewStmtNearEnd(block, sideEffList);
+            newStmt     = fgNewStmtNearEnd(block, sideEffList, stmt->GetInlineContext());
             sideEffList = nullptr;
         }
         // fgMorphBlockStmt could potentially affect stmts after the current one,
@@ -4998,7 +4999,7 @@ Compiler::fgWalkResult Compiler::optVNConstantPropCurStmt(BasicBlock* block, Sta
     }
 
     // Perform the constant propagation
-    GenTree* newTree = optVNConstantPropOnTree(block, tree);
+    GenTree* newTree = optVNConstantPropOnTree(block, stmt, tree);
     if (newTree == nullptr)
     {
         // Not propagated, keep going.

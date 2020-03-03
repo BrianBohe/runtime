@@ -4254,7 +4254,7 @@ void Compiler::fgOptWhileLoop(BasicBlock* block)
     /* Create a statement entry out of the condition and
        append the condition test at the end of 'block' */
 
-    Statement* copyOfCondStmt = fgNewStmtAtEnd(block, condTree);
+    Statement* copyOfCondStmt = fgNewStmtAtEnd(block, condTree, condStmt->GetInlineContext());
 
     copyOfCondStmt->SetCompilerAdded();
 

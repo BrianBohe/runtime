@@ -714,13 +714,13 @@ inline void Compiler::impInsertStmtBefore(Statement* stmt, Statement* stmtBefore
  *  Return the newly created statement.
  */
 
-Statement* Compiler::impAppendTree(GenTree* tree, unsigned chkLevel, IL_OFFSETX offset)
+Statement* Compiler::impAppendTree(GenTree* tree, unsigned chkLevel, InlineContext* treeContext, IL_OFFSETX offset)
 {
     assert(tree);
 
     /* Allocate an 'expression statement' node */
 
-    Statement* stmt = gtNewStmt(tree, offset);
+    Statement* stmt = gtNewStmt(tree, treeContext, offset);
 
     /* Append the statement to the current block's stmt list */
 
@@ -734,11 +734,11 @@ Statement* Compiler::impAppendTree(GenTree* tree, unsigned chkLevel, IL_OFFSETX 
  *  Insert the given expression tree before "stmtBefore"
  */
 
-void Compiler::impInsertTreeBefore(GenTree* tree, IL_OFFSETX offset, Statement* stmtBefore)
+void Compiler::impInsertTreeBefore(GenTree* tree, InlineContext* treeContext, IL_OFFSETX offset, Statement* stmtBefore)
 {
     /* Allocate an 'expression statement' node */
 
-    Statement* stmt = gtNewStmt(tree, offset);
+    Statement* stmt = gtNewStmt(tree, treeContext, offset);
 
     /* Append the statement to the current block's stmt list */
 
@@ -759,19 +759,20 @@ void Compiler::impAssignTempGen(unsigned    tmp,
                                 BasicBlock* block       /* = NULL */
                                 )
 {
-    GenTree* asg = gtNewTempAssign(tmp, val);
+    InlineContext* context = (impLastStmt != null)? impLastStmt->GetInlineContext() : m_inlineStrategy->GetRootContext();
+    GenTree* asg = gtNewTempAssign(tmp, val, context);
 
     if (!asg->IsNothingNode())
-    {
+    {    
         if (pAfterStmt)
         {
-            Statement* asgStmt = gtNewStmt(asg, ilOffset);
+            Statement* asgStmt = gtNewStmt(asg, context, ilOffset);
             fgInsertStmtAfter(block, *pAfterStmt, asgStmt);
             *pAfterStmt = asgStmt;
         }
         else
         {
-            impAppendTree(asg, curLevel, impCurStmtOffs);
+            impAppendTree(asg, curLevel, context, impCurStmtOffs);
         }
     }
 }
@@ -784,6 +785,7 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
                                 GenTree*             val,
                                 CORINFO_CLASS_HANDLE structType,
                                 unsigned             curLevel,
+                                InlineContext*       context,
                                 Statement**          pAfterStmt, /* = NULL */
                                 IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                 BasicBlock*          block       /* = NULL */
@@ -815,7 +817,7 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
         val->gtType = lvaTable[tmpNum].lvType;
 
         GenTree* dst = gtNewLclvNode(tmpNum, val->gtType);
-        asg          = impAssignStruct(dst, val, structType, curLevel, pAfterStmt, ilOffset, block);
+        asg          = impAssignStruct(dst, val, structType, curLevel, context, pAfterStmt, ilOffset, block);
     }
     else
     {
@@ -826,13 +828,13 @@ void Compiler::impAssignTempGen(unsigned             tmpNum,
     {
         if (pAfterStmt)
         {
-            Statement* asgStmt = gtNewStmt(asg, ilOffset);
+            Statement* asgStmt = gtNewStmt(asg, context, ilOffset);
             fgInsertStmtAfter(block, *pAfterStmt, asgStmt);
             *pAfterStmt = asgStmt;
         }
         else
         {
-            impAppendTree(asg, curLevel, impCurStmtOffs);
+            impAppendTree(asg, curLevel, context, impCurStmtOffs);
         }
     }
 }
@@ -1079,6 +1081,7 @@ GenTree* Compiler::impAssignStruct(GenTree*             dest,
                                    GenTree*             src,
                                    CORINFO_CLASS_HANDLE structHnd,
                                    unsigned             curLevel,
+                                   InlineContext*       context,
                                    Statement**          pAfterStmt, /* = nullptr */
                                    IL_OFFSETX           ilOffset,   /* = BAD_IL_OFFSET */
                                    BasicBlock*          block       /* = nullptr */
@@ -1105,7 +1108,7 @@ GenTree* Compiler::impAssignStruct(GenTree*             dest,
         }
         else
         {
-            impAppendTree(dest->AsOp()->gtOp1, curLevel, ilOffset); // do the side effect
+            impAppendTree(dest->AsOp()->gtOp1, curLevel, context, ilOffset); // do the side effect
         }
 
         // set dest to the second thing
@@ -1506,8 +1509,8 @@ GenTree* Compiler::impGetStructAddr(GenTree*             structVal,
                 // Insert after the oldLastStmt before the first inserted for op2.
                 beforeStmt = oldLastStmt->GetNextStmt();
             }
-
-            impInsertTreeBefore(structVal->AsOp()->gtOp1, impCurStmtOffs, beforeStmt);
+            assert(impLastStmt != nullptr);
+            impInsertTreeBefore(structVal->AsOp()->gtOp1, impLastStmt->GetInlineContext(), impCurStmtOffs, beforeStmt);
             structVal->AsOp()->gtOp1 = gtNewNothingNode();
         }
 

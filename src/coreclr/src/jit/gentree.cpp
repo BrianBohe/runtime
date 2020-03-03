@@ -13480,7 +13480,7 @@ GenTree* Compiler::gtOptimizeEnumHasFlag(GenTree* thisOp, GenTree* flagOp)
     else
     {
         const unsigned thisTmp     = lvaGrabTemp(true DEBUGARG("Enum:HasFlag this temp"));
-        GenTree*       thisAsg     = gtNewTempAssign(thisTmp, thisVal);
+        GenTree*       thisAsg     = gtNewTempAssign(thisTmp, thisVal, compCurStmt->getInlineContext());
         Statement*     thisAsgStmt = thisOp->AsBox()->gtCopyStmtWhenInlinedBoxValue;
         thisAsgStmt->SetRootNode(thisAsg);
         thisValOpt = gtNewLclvNode(thisTmp, type);
@@ -13496,7 +13496,7 @@ GenTree* Compiler::gtOptimizeEnumHasFlag(GenTree* thisOp, GenTree* flagOp)
     else
     {
         const unsigned flagTmp     = lvaGrabTemp(true DEBUGARG("Enum:HasFlag flag temp"));
-        GenTree*       flagAsg     = gtNewTempAssign(flagTmp, flagVal);
+        GenTree*       flagAsg     = gtNewTempAssign(flagTmp, flagVal, compCurStmt->getInlineContext());
         Statement*     flagAsgStmt = flagOp->AsBox()->gtCopyStmtWhenInlinedBoxValue;
         flagAsgStmt->SetRootNode(flagAsg);
         flagValOpt     = gtNewLclvNode(flagTmp, type);
@@ -14945,6 +14945,7 @@ DONE:
 // Arguments:
 //    tmp         - local number for a compiler temp
 //    val         - value to assign to the temp
+//    valContext  - the inline context from where this val came from
 //    pAfterStmt  - statement to insert any additional statements after
 //    ilOffset    - il offset for new statements
 //    block       - block to insert any additional statements in
@@ -14961,7 +14962,7 @@ DONE:
 //    May set compFloatingPointUsed.
 
 GenTree* Compiler::gtNewTempAssign(
-    unsigned tmp, GenTree* val, Statement** pAfterStmt, IL_OFFSETX ilOffset, BasicBlock* block)
+    unsigned tmp, GenTree* val, InlineContext* valContext, Statement** pAfterStmt, IL_OFFSETX ilOffset, BasicBlock* block)
 {
     // Self-assignment is a nop.
     if (val->OperGet() == GT_LCL_VAR && val->AsLclVarCommon()->GetLclNum() == tmp)
@@ -15067,7 +15068,7 @@ GenTree* Compiler::gtNewTempAssign(
         }
         dest->gtFlags |= GTF_DONT_CSE;
         valx->gtFlags |= GTF_DONT_CSE;
-        asg = impAssignStruct(dest, val, structHnd, (unsigned)CHECK_SPILL_NONE, pAfterStmt, ilOffset, block);
+        asg = impAssignStruct(dest, val, structHnd, (unsigned)CHECK_SPILL_NONE, valContext, pAfterStmt, ilOffset, block);
     }
     else
     {

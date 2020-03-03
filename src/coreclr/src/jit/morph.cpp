@@ -8196,7 +8196,7 @@ GenTree* Compiler::fgMorphCall(GenTreeCall* call)
     if ((call->gtCallMoreFlags & GTF_CALL_M_SPECIAL_INTRINSIC))
     {
         // See if this is foldable
-        GenTree* optTree = gtFoldExprCall(call);
+        GenTree* optTree = gtFoldExprCall(call, compCurStmt->getInlineContext());
 
         // If we optimized, morph the result
         if (optTree != call)
