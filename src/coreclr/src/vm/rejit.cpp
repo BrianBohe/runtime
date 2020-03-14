@@ -161,6 +161,43 @@ static ReJITID s_GlobalReJitId = 1;
 CrstStatic ReJitManager::s_csGlobalRequest;
 
 
+// static
+HRESULT ReJitManager::GetMethodAndModuleTknFor(
+    mdMethodDef                        methodTkn,
+    mdToken                        moduleTkn,
+    MethodDesc                         **pInlinee,
+    Module                             **pModule)
+{
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_TRIGGERS;
+        CAN_TAKE_LOCK;
+        MODE_PREEMPTIVE;
+    }
+    CONTRACTL_END;
+
+
+    HRESULT hr = S_OK;
+
+    AppDomain::AssemblyIterator domainAssemblyIterator = SystemDomain::System()->DefaultDomain()->IterateAssembliesEx((AssemblyIterationFlags) (kIncludeLoaded | kIncludeExecution | kIncludeCollected));
+    CollectibleAssemblyHolder<DomainAssembly *> pDomainAssembly;
+    while (domainAssemblyIterator.Next(pDomainAssembly.This()))
+    {
+        _ASSERTE(pDomainAssembly != NULL);
+        _ASSERTE(pDomainAssembly->GetAssembly() != NULL);
+
+        DomainModuleIterator domainModuleIterator = pDomainAssembly->IterateModules(kModIterIncludeLoaded);
+        while (domainModuleIterator.Next())
+        {
+            Module * pCurModule = domainModuleIterator.GetModule();
+            
+        }
+    }
+
+    return S_OK;
+}
+
 //---------------------------------------------------------------------------------------
 // Helpers
 

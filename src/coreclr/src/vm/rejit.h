@@ -114,7 +114,12 @@ private:
 #endif //FEATURE_REJIT
 
 public:
-
+    static HRESULT GetMethodAndModuleTknFor(
+        mdMethodDef                        methodTkn,
+        mdToken                            moduleTkn,
+        MethodDesc                         **pInlinee,
+        Module                             **pModule);
+    
     static void InitStatic();
 
     static BOOL IsReJITEnabled();
