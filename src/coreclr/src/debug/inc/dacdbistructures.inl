@@ -269,6 +269,67 @@ inline void NativeVarData::InitVarDataList(ICorDebugInfo::NativeVarInfo * pListS
 }
 
 //-----------------------------------------------------------------------------
+// InlinedPoints member function implementations
+//-----------------------------------------------------------------------------
+// initializing constructor
+inline InlinedPoints::InlinedPoints() :
+               m_mapCount(0),
+               m_fInitialized(false)
+{
+}
+
+// destructor
+inline InlinedPoints::~InlinedPoints()
+{
+    m_fInitialized = false;
+}
+
+// Initialize the m_pMap data member to the address of an allocated chunk
+// of memory (or to NULL if the count is zero). Set m_count as the
+// number of entries in the map.
+inline void InlinedPoints::InitInlinedPoints(ULONG32 count)
+{
+    m_map.Alloc(count);
+    m_mapCount = count;
+    m_fInitialized = true;
+}
+
+inline unsigned int InlinedPoints::GetFirstNativeOffsetSinceStatement(unsigned int index)
+{
+    for (; index < m_mapCount; ++index)
+    {
+        if ((m_map[index].source & (ICorDebugInfo::SourceTypes::INLINE_OPEN | ICorDebugInfo::SourceTypes::INLINE_CLOSE)) == 0)
+        {
+            return m_map[index].offset.nativeOffset;
+        }
+    }
+    return ~0;
+}
+
+inline
+void InlinedPoints::CopyInlinedPoints(const ICorDebugInfo::OffsetMapping2  mapCopy[])
+{
+    unsigned int i;
+
+    const DWORD call_inst = (DWORD)ICorDebugInfo::CALL_INSTRUCTION;
+    for (i = 0; i < m_map.Count(); i++)
+    {
+        m_map[i].source = mapCopy[i].source;
+
+        if ((mapCopy[i].source & (ICorDebugInfo::INLINE_CLOSE | ICorDebugInfo::INLINE_OPEN)) != 0)
+        {
+            m_map[i].offset.ilOffset = mapCopy[i].offset.ilOffset;
+            m_map[i].offset.nativeOffset = mapCopy[i].offset.nativeOffset;
+        }
+        else
+        {
+            m_map[i].method.moduleToken = mapCopy[i].method.moduleToken;
+            m_map[i].method.methodToken = mapCopy[i].method.methodToken;    
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
 // SequencePoints member function implementations
 //-----------------------------------------------------------------------------
 

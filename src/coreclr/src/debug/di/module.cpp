@@ -5327,7 +5327,8 @@ void CordbNativeCode::LoadNativeInfo()
                                                                   GetAddress(),
                                                                   m_fCodeAvailable,
                                                                   &m_nativeVarData,
-                                                                  &m_sequencePoints);
+                                                                  &m_sequencePoints,
+                                                                  &m_inlinePoints);
     }
 
 } // CordbNativeCode::LoadNativeInfo

@@ -469,6 +469,73 @@ public:
     bool                                   m_fInitialized;
 }; // class SequencePoints
 
+//===================================================================================
+// InlinedPoints holds a map from each native offset to the module and method token
+// from which the statement has been imported
+//===================================================================================
+class MSLAYOUT InlinedPoints
+{
+public:
+    InlinedPoints();
+
+    ~InlinedPoints();
+
+    // Initialize the m_pMap data member to the address of an allocated chunk
+    // of memory (or to NULL if the count is zero). Set m_count as the
+    // number of entries in the map.
+    void InitInlinedPoints(ULONG32 count);
+
+private:
+    // non-existent copy constructor to disable the (shallow) compiler-generated
+    // one. If you attempt to use this, you will get a compiler or linker error.
+    InlinedPoints(const InlinedPoints & rhs) {};
+
+    // non-existent assignment operator to disable the (shallow) compiler-generated
+    // one. If you attempt to use this, you will get a compiler or linker error.
+    InlinedPoints & operator=(const InlinedPoints & rhs);
+
+//----------------------------------------------------------------------------------
+// Accessor Functions
+//----------------------------------------------------------------------------------
+public:
+    // get value of m_pMap
+    OffsetMapping2 * GetMapAddr()
+    {
+        // Please don't call this function
+       _ASSERTE(m_fInitialized);
+       return &(m_map[0]);
+    }
+
+    // get value of m_count
+    ULONG32 GetEntryCount()
+    {
+        _ASSERTE(m_fInitialized);
+        return m_mapCount;
+    }
+
+    // determine whether we have initialized this
+    BOOL IsInitialized()
+    {
+        return m_fInitialized == true;
+    }
+
+    unsigned int InlinedPoints::GetFirstNativeOffsetSinceStatement(unsigned int index);
+    
+    void CopyInlinedPoints(const ICorDebugInfo::OffsetMapping2  mapCopy[]);
+
+//----------------------------------------------------------------------------------
+// Data Members
+//----------------------------------------------------------------------------------
+public:
+
+    // map of IL to native offsets for sequence points
+    DacDbiArrayList<OffsetMapping2> m_map;
+    ULONG32 m_mapCount;
+
+    // indicates whether an attempt has been made to initialize the sequence points already
+    bool                                   m_fInitialized;
+}; // class InlinedPoints
+
 //----------------------------------------------------------------------------------
 // declarations needed for getting native code regions
 //----------------------------------------------------------------------------------

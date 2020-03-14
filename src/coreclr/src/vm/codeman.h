@@ -749,6 +749,15 @@ public:
         OUT ULONG32 * pcVars,
         OUT ICorDebugInfo::NativeVarInfo **ppVars) = 0;
 
+    virtual BOOL GetNewBoundaries(
+        const DebugInfoRequest & request,
+        IN FP_IDS_NEW fpNew, IN void * pNewData,
+        OUT ULONG32 * pcMap,
+        OUT ICorDebugInfo::OffsetMapping2 **ppMap)
+    {
+        return false;
+    };
+
     virtual BOOL JitCodeToMethodInfo(
             RangeSection * pRangeSection,
             PCODE currentPC,
@@ -981,6 +990,13 @@ public:
         OUT ICorDebugInfo::OffsetMapping **ppMap,
         OUT ULONG32 * pcVars,
         OUT ICorDebugInfo::NativeVarInfo **ppVars);
+
+    virtual BOOL GetNewBoundaries(
+            const DebugInfoRequest & request,
+            IN FP_IDS_NEW fpNew, IN void * pNewData,
+            OUT ULONG32 * pcMap,
+            OUT ICorDebugInfo::OffsetMapping2 **ppMap);
+
 
     virtual PCODE GetCodeAddressForRelOffset(const METHODTOKEN& MethodToken, DWORD relOffset);
 #endif // !CROSSGEN_COMPILE

@@ -1313,7 +1313,8 @@ public:
                                                CORDB_ADDRESS     startAddress,
                                                BOOL              fCodeAvailabe,
                                                OUT NativeVarData *   pNativeVarData,
-                                               OUT SequencePoints *  pSequencePoints) = 0;
+                                               OUT SequencePoints *  pSequencePoints,
+                                               OUT InlinedPoints * pInlinedPoints) = 0;
 
     //
     // Return the filter CONTEXT on the LS.  Once we move entirely over to the new managed pipeline
@@ -2022,6 +2023,8 @@ public:
     // gets the list of raw stack frames for the specified exception object
     virtual
     void GetStackFramesFromException(VMPTR_Object vmObject, DacDbiArrayList<DacExceptionCallStackData>& dacStackFrames) = 0;
+
+    virtual HRESULT GetMethodAndModuleTknFor(mdMethodDef methodToken, mdToken moduleToken, MethodDesc **pMethod, Module **pmdule) =0;
 
     // Returns true if the argument is a runtime callable wrapper
     virtual

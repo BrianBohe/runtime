@@ -231,6 +231,28 @@ struct DebuggerILToNativeMap
     ICorDebugInfo::SourceTypes source;
 };
 
+struct ILOffsetMapping
+{
+    DWORD           nativeOffset;
+    DWORD           ilOffset;
+};
+
+struct MethodMapping
+{
+    DWORD methodToken;
+    DWORD moduleToken;
+};
+
+struct OffsetMapping2
+{
+    union
+    {
+        MethodMapping method;
+        ILOffsetMapping offset;
+    };
+    ICorDebugInfo::SourceTypes     source;
+};
+
 void ExportILToNativeMap(ULONG32 cMap,
              COR_DEBUG_IL_TO_NATIVE_MAP mapExt[],
              struct DebuggerILToNativeMap mapInt[],

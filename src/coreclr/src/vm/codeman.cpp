@@ -3595,6 +3595,36 @@ BOOL EEJitManager::GetBoundariesAndVars(
     return TRUE;
 }
 
+BOOL EEJitManager::GetNewBoundaries(
+        const DebugInfoRequest & request,
+        IN FP_IDS_NEW fpNew, IN void * pNewData,
+        OUT ULONG32 * pcMap,
+        OUT ICorDebugInfo::OffsetMapping2 **ppMap)
+{
+    CONTRACTL {
+        THROWS;       // on OOM.
+        GC_NOTRIGGER; // getting vars shouldn't trigger
+        SUPPORTS_DAC;
+    } CONTRACTL_END;
+
+    CodeHeader * pHdr = GetCodeHeaderFromDebugInfoRequest(request);
+    _ASSERTE(pHdr != NULL);
+
+    PTR_BYTE pDebugInfo = pHdr->GetDebugInfo();
+
+    // No header created, which means no jit information is available.
+    if (pDebugInfo == NULL)
+        return FALSE;
+
+    // Uncompress. This allocates memory and may throw.
+    CompressDebugInfo::RestoreNewBoundaries(
+        fpNew, pNewData, // allocators
+        pDebugInfo,      // input
+        pcMap, ppMap); // output
+
+    return TRUE;
+}
+
 #ifdef DACCESS_COMPILE
 void CodeHeader::EnumMemoryRegions(CLRDataEnumMemoryFlags flags, IJitManager* pJitMan)
 {

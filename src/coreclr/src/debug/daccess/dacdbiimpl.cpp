@@ -25,7 +25,7 @@
 #include "stackwalk.h"
 
 #include "dacdbiimpl.h"
-
+#include "rejit.h"
 #ifdef FEATURE_COMINTEROP
 #include "runtimecallablewrapper.h"
 #include "comcallablewrapper.h"
@@ -771,7 +771,8 @@ void DacDbiInterfaceImpl::GetNativeCodeSequencePointsAndVarInfo(VMPTR_MethodDesc
                                                                 CORDB_ADDRESS     startAddr,
                                                                 BOOL              fCodeAvailable,
                                                                 NativeVarData *   pNativeVarData,
-                                                                SequencePoints *  pSequencePoints)
+                                                                SequencePoints *  pSequencePoints,
+                                                                InlinedPoints *    pInlinedPoints)
 {
     DD_ENTER_MAY_THROW;
 
@@ -787,6 +788,8 @@ void DacDbiInterfaceImpl::GetNativeCodeSequencePointsAndVarInfo(VMPTR_MethodDesc
     // get the sequence points
     GetSequencePoints(pMD, startAddr, pSequencePoints);
 
+    // get the new inline info
+    GetInlinedPoints(pMD, startAddr, pInlinedPoints);
 } // GetNativeCodeSequencePointsAndVarInfo
 
 //-----------------------------------------------------------------------------
@@ -964,6 +967,38 @@ void DacDbiInterfaceImpl::ComposeMapping(const InstrumentedILOffsetMapping * pPr
     }
 }
 
+
+void DacDbiInterfaceImpl::GetInlinedPoints(MethodDesc *     pMethodDesc,
+                                            CORDB_ADDRESS    startAddr,
+                                            InlinedPoints * pInlinedPoints)
+{
+    // make sure we haven't done this already
+    if (pInlinedPoints->IsInitialized())
+    {
+        return;
+    }
+
+    // Use the DebugInfoStore to get IL->Native maps.
+    // It doesn't matter whether we're jitted, ngenned etc.
+    DebugInfoRequest request;
+    request.InitFromStartingAddr(pMethodDesc, CORDB_ADDRESS_TO_TADDR(startAddr));
+
+    // Bounds info.
+    NewArrayHolder<ICorDebugInfo::OffsetMapping2> mapCopy(NULL);
+
+    ULONG32 entryCount;
+    BOOL success = DebugInfoManager::GetNewBoundaries(request,
+                                                      InfoStoreNew, NULL, // allocator
+                                                      &entryCount, &mapCopy);
+    if (!success)
+        ThrowHR(E_FAIL);
+
+    pInlinedPoints->InitInlinedPoints(entryCount);
+
+    // just exactly the same structure
+    pInlinedPoints->CopyInlinedPoints(mapCopy);
+
+} // GetInlinedPoints
 
 //-----------------------------------------------------------------------------
 // Get the native/IL sequence points for a function
@@ -3636,6 +3671,14 @@ void DacDbiInterfaceImpl::GetStackFramesFromException(VMPTR_Object vmObject, Dac
             currentFrame.isLastForeignExceptionFrame = (currentElement.flags & STEF_LAST_FRAME_FROM_FOREIGN_STACK_TRACE) != 0;
         }
     }
+}
+
+HRESULT DacDbiInterfaceImpl::GetMethodAndModuleTknFor(mdMethodDef methodToken, mdToken moduleToken, MethodDesc **pMethod, Module **pModule)
+{
+#ifdef FEATURE_COMINTEROP
+    DD_ENTER_MAY_THROW
+    return ReJitManager::GetMethodAndModuleTknFor(methodToken, moduleToken, pMethod, pModule);
+#endif // FEATURE_COMINTEROP
 }
 
 #ifdef FEATURE_COMINTEROP

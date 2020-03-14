@@ -5967,6 +5967,11 @@ public:
         return &m_sequencePoints;
     }
 
+    InlinedPoints * GetInlinedPoints()
+    {
+        return &m_inlinePoints;
+    }
+
 
     // Given an ILOffset in the current function, return the class token and function token of the IL call target at that
     // location.  Also fill "methodSig" with the method's signature and "genericSig" with the method's generic signature.
@@ -6015,6 +6020,9 @@ private:
 
     // mapping between IL and native code sequence points.
     SequencePoints           m_sequencePoints;
+
+    // mapping between native offsets and IL or to inline context
+    InlinedPoints m_inlinePoints;
 
 }; //class CordbNativeCode
 
@@ -6467,6 +6475,7 @@ private:
     RSSmartPtr<CordbFrame> m_pCachedFrame;
     HRESULT m_cachedHR;
     bool m_fIsOneFrameAhead;
+    void InspectInlineFunctions();
 };
 
 

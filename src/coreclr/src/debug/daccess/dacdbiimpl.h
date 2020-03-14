@@ -118,7 +118,8 @@ public:
                                                CORDB_ADDRESS     startAddr,
                                                BOOL              fCodeAvailable,
                                                NativeVarData *   pNativeVarData,
-                                               SequencePoints *  pSequencePoints);
+                                               SequencePoints *  pSequencePoints,
+                                               InlinedPoints *   pInlinedPoints);
 
     bool IsThreadSuspendedOrHijacked(VMPTR_Thread vmThread);
 
@@ -185,6 +186,10 @@ private:
     void GetSequencePoints(MethodDesc *    pMethodDesc,
                            CORDB_ADDRESS    startAddr,
                            SequencePoints * pNativeMap);
+
+    void GetInlinedPoints(MethodDesc *    pMethodDesc,
+                           CORDB_ADDRESS    startAddr,
+                           InlinedPoints * pInlinedPoints);
 
     // Helper to compose a IL->IL and IL->Native mapping
     void ComposeMapping(const InstrumentedILOffsetMapping * pProfilerILMap, ICorDebugInfo::OffsetMapping nativeMap[], ULONG32* pEntryCount);
@@ -345,6 +350,8 @@ public:
     BOOL IsExceptionObject(VMPTR_Object vmObject);
 
     void GetStackFramesFromException(VMPTR_Object vmObject, DacDbiArrayList<DacExceptionCallStackData>& dacStackFrames);
+
+    HRESULT GetMethodAndModuleTknFor(mdMethodDef methodToken, mdToken moduleToken, MethodDesc **pMethod, Module **pmdule);
 
     // Returns true if the argument is a runtime callable wrapper
     BOOL IsRcw(VMPTR_Object vmObject);
