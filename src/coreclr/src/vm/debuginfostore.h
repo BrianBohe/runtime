@@ -97,6 +97,14 @@ public:
         OUT ULONG32                         *pcVars,
         OUT ICorDebugInfo::NativeVarInfo    **ppVars
     );
+    
+    // Uncompress new data supplied by Compress functions.
+    static void RestoreNewBoundaries(
+        IN FP_IDS_NEW fpNew, IN void * pNewData,
+        IN PTR_BYTE                         pDebugInfo,
+        OUT ULONG32                       * pcMap, // number of entries in ppMap
+        OUT ICorDebugInfo::OffsetMapping2 **ppMap // pointer to newly allocated array
+    );
 
 #ifdef DACCESS_COMPILE
     static void EnumMemoryRegions(CLRDataEnumMemoryFlags flags, PTR_BYTE pDebugInfo);
@@ -118,6 +126,12 @@ public:
         OUT ICorDebugInfo::OffsetMapping ** ppMap,
         OUT ULONG32 * pcVars,
         OUT ICorDebugInfo::NativeVarInfo ** ppVars);
+
+    static BOOL GetNewBoundaries(
+        const DebugInfoRequest & request,
+        IN FP_IDS_NEW fpNew, IN void * pNewData,
+        OUT ULONG32 * pcMap,
+        OUT ICorDebugInfo::OffsetMapping2 ** ppMap);
 
 #ifdef DACCESS_COMPILE
     static void EnumMemoryRegionsForMethodDebugInfo(CLRDataEnumMemoryFlags flags, MethodDesc * pMD);

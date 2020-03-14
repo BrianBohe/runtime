@@ -727,7 +727,60 @@ void CompressDebugInfo::RestoreBoundariesAndVars(
     }
 }
 
+void CompressDebugInfo::RestoreNewBoundaries(
+    IN FP_IDS_NEW fpNew, IN void * pNewData,
+    IN PTR_BYTE                         pDebugInfo,
+    OUT ULONG32                       * pcMap, // number of entries in ppMap
+    OUT ICorDebugInfo::OffsetMapping2 **ppMap // pointer to newly allocated array
+    )
+{
+    CONTRACTL
+    {
+        THROWS; // reading from nibble stream may throw on invalid data.
+        GC_NOTRIGGER;
+        MODE_ANY;
+        SUPPORTS_DAC;
+    }
+    CONTRACTL_END;
 
+    if (pcMap != NULL) *pcMap = 0;
+    if (ppMap != NULL) *ppMap = NULL;
+
+    NibbleReader r(pDebugInfo, 12 /* maximum size of compressed 2 UINT32s */);
+
+    ULONG cbBounds = r.ReadEncodedU32();
+    ULONG cbVars   = r.ReadEncodedU32();
+
+    PTR_BYTE addrBounds = pDebugInfo + r.GetNextByteIndex();
+
+    if ((pcMap != NULL || ppMap != NULL) && (cbBounds != 0))
+    {
+        NibbleReader r(addrBounds, cbBounds);
+        TransferReader t(r);
+
+        UINT32 cNumEntries = r.ReadEncodedU32();
+        _ASSERTE(cNumEntries > 0);
+
+        if (ppMap != NULL)
+        {
+            *ppMap = reinterpret_cast<ICorDebugInfo::OffsetMapping2 *>
+                (fpNew(pNewData, cNumEntries * sizeof(ICorDebugInfo::OffsetMapping2)));
+            
+            if (ppMap == NULL)
+            {
+                ThrowOutOfMemory();
+            }
+
+            // Main decompression routine.
+            DoBounds(t, cNumEntries, *ppMap);
+        }
+        
+        if (pcMap != NULL)
+        {
+            *pcMap = cNumEntries;
+        }
+    }
+}
 
 #ifdef DACCESS_COMPILE
 void CompressDebugInfo::EnumMemoryRegions(CLRDataEnumMemoryFlags flags, PTR_BYTE pDebugInfo)
@@ -823,3 +876,29 @@ void DebugInfoManager::EnumMemoryRegionsForMethodDebugInfo(CLRDataEnumMemoryFlag
     pJitMan->EnumMemoryRegionsForMethodDebugInfo(flags, pMD);
 }
 #endif
+
+//-----------------------------------------------------------------------------
+// Impl for DebugInfoManager's IDebugInfoStore
+//-----------------------------------------------------------------------------
+BOOL DebugInfoManager::GetNewBoundaries(
+    const DebugInfoRequest & request,
+    IN FP_IDS_NEW fpNew, IN void * pNewData,
+    OUT ULONG32 * pcMap,
+    OUT ICorDebugInfo::OffsetMapping2 ** ppMap)
+{
+    CONTRACTL
+    {
+        THROWS;
+        WRAPPER(GC_TRIGGERS); // depends on fpNew
+        SUPPORTS_DAC;
+    }
+    CONTRACTL_END;
+
+    IJitManager* pJitMan = ExecutionManager::FindJitMan(request.GetStartAddress());
+    if (pJitMan == NULL)
+    {
+        return FALSE; // no info available.
+    }
+
+    return pJitMan->GetNewBoundaries(request, fpNew, pNewData, pcMap, ppMap);
+}
