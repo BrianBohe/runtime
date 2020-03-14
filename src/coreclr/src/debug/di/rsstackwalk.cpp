@@ -9,10 +9,12 @@
 // This file contains the implementation of the V3 managed stackwalking API.
 //
 // ======================================================================================
-
+#include "appdomain.h"
+#include "appdomain.hpp"
+#include "appdomain.cpp"
 #include "stdafx.h"
 #include "primitives.h"
-
+#include "stack.h"
 
 //---------------------------------------------------------------------------------------
 //
@@ -432,6 +434,211 @@ BOOL CordbStackWalk::UnwindStackFrame()
     return retVal;
 } // CordbStackWalk::UnwindStackWalkFrame
 
+void CordbStackWalk::InspectInlineFunctions()
+{
+    HRESULT hr = S_OK;
+    IDacDbiInterface * pDAC = NULL;
+    DebuggerIPCE_STRData frameData;
+    ZeroMemory(&frameData, sizeof(frameData));
+    IDacDbiInterface::FrameType ft = IDacDbiInterface::kInvalid;
+
+    pDAC = GetProcess()->GetDAC();
+    ft = pDAC->GetStackWalkCurrentFrameInfo(m_pSFIHandle, &frameData);
+
+    if (ft == IDacDbiInterface::kManagedStackFrame)
+    {
+        DebuggerIPCE_FuncData * pFuncData = &(frameData.v.funcData);
+
+        // currentJITFuncData contains information about the current jitted instance of the method
+        // on the stack.
+        DebuggerIPCE_JITFuncData * pJITFuncData = &(frameData.v.jitFuncData);
+
+        // Lookup the appdomain that the thread was in when it was executing code for this frame. We pass this
+        // to the frame when we create it so we can properly resolve locals in that frame later.
+        CordbAppDomain * pCurrentAppDomain = GetProcess()->LookupOrCreateAppDomain(frameData.vmCurrentAppDomainToken);
+        _ASSERTE(pCurrentAppDomain != NULL);
+
+        // Lookup the module
+        CordbModule* pModule = pCurrentAppDomain->LookupOrCreateModule(pFuncData->vmDomainFile);
+        PREFIX_ASSUME(pModule != NULL);
+
+        // Create or look up a CordbNativeCode.  There is one for each jitted instance of a method,
+        // and we may have multiple instances because of generics.
+        CordbNativeCode * pNativeCode = pModule->LookupOrCreateNativeCode(pFuncData->funcMetadataToken,
+                                                                            pJITFuncData->vmNativeCodeMethodDescToken,
+                                                                            pJITFuncData->nativeStartAddressPtr);
+        IfFailThrow(hr);
+
+        // The native code object will create the function object if needed
+        CordbFunction * pFunction = pNativeCode->GetFunction();
+
+        // A CordbFunction is theoretically the uninstantiated method, yet for back-compat we allow
+        // debuggers to assume that it corresponds to exactly 1 native code blob. In order for
+        // an open generic function to know what native code to give back, we attach an arbitrary
+        // native code that we located through code inspection.
+        // Note that not all CordbFunction objects get created via stack traces because you can also
+        // create them by name. In that case you still won't get code for Open generic functions
+        // because we will never have attached one and the lookup by token is insufficient. This
+        // behavior mimics our 2.0 debugging behavior though so its not a regression.
+        pFunction->NotifyCodeCreated(pNativeCode);
+        IfFailThrow(hr);
+        _ASSERTE((pFunction != NULL) && (pNativeCode != NULL));
+
+        // initialize the auxiliary info required for funclets
+        CordbMiscFrame miscFrame(pJITFuncData);
+
+        // Create the native frame.
+        CordbNativeFrame* pNativeFrame = new CordbNativeFrame(m_pCordbThread,
+                                                                frameData.fp,
+                                                                pNativeCode,
+                                                                pJITFuncData->nativeOffset,
+                                                                &(frameData.rd),
+                                                                frameData.v.taAmbientESP,
+                                                                !!frameData.quicklyUnwound,
+                                                                pCurrentAppDomain,
+                                                                &miscFrame,
+                                                                &(frameData.ctx));
+
+        // pResultFrame.Assign(static_cast<CordbFrame *>(pNativeFrame));
+        // m_pCachedFrame.Assign(static_cast<CordbFrame *>(pNativeFrame));
+
+        if (!frameData.v.fNoMetadata &&
+                pNativeCode->GetFunction()->IsNativeImpl() != CordbFunction::kNativeOnly)
+        {
+            pNativeCode->LoadNativeInfo();
+
+            // By design, when a managed exception occurs we return the sequence point containing the faulting
+            // instruction in the leaf frame. In the past we didn't always achieve this,
+            // but we are being more deliberate about this behavior now.
+
+            // If jsutAfterILThrow is true, it means nativeOffset points to the return address of IL_Throw
+            // (or another JIT exception helper) after an exception has been thrown.
+            // In such cases we want to adjust nativeOffset, so it will point an actual exception callsite.
+            // By subtracting STACKWALK_CONTROLPC_ADJUST_OFFSET from nativeOffset you can get
+            // an address somewhere inside CALL instruction.
+            // This ensures more consistent placement of exception line highlighting in Visual Studio
+            DWORD nativeOffsetToMap = pJITFuncData->jsutAfterILThrow ?
+                                (DWORD)pJITFuncData->nativeOffset - STACKWALK_CONTROLPC_ADJUST_OFFSET :
+                                (DWORD)pJITFuncData->nativeOffset;
+
+            InlinedPoints *statements = pNativeCode->GetInlinedPoints();
+            unsigned int statements_count = statements->GetEntryCount();
+            DWORD lastNativeOffset = (statements_count > 0) ? statements->GetFirstNativeOffsetSinceStatement(0): nativeOffsetToMap;
+            Stack<OffsetMapping2 *> inlinedFrames(statements->GetEntryCount());
+
+            bool lastInstrSaved = false;
+            OffsetMapping2* lastInstr = nullptr;
+            unsigned int stmt_index = 0;
+            for (stmt_index = 0; stmt_index < statements->GetEntryCount() && lastNativeOffset <= nativeOffsetToMap; ++stmt_index)
+            {
+                OffsetMapping2* stmt = &(statements->m_map[stmt_index]);
+                if ((stmt->source & (ICorDebugInfo::SourceTypes::INLINE_OPEN)) != 0)
+                {
+                    inlinedFrames.Push(&(statements->m_map[stmt_index - 1]));
+                    inlinedFrames.Push(stmt);
+                    lastInstrSaved = false;
+                }
+                else if ((stmt->source & (ICorDebugInfo::SourceTypes::INLINE_CLOSE)) != 0)
+                {
+                    /*inlinedFrames.Pop();
+                    inlinedFrames.Pop();*/
+                    lastInstrSaved = false;
+                }
+                else
+                {
+                    // a real il mapping offset
+                    // it is sorted increasingly by nativeOffset
+                    if (!lastInstrSaved)
+                    {
+                        lastInstrSaved = true;
+                        lastInstr = stmt;
+                    }
+                    lastNativeOffset = statements->GetFirstNativeOffsetSinceStatement(stmt_index + 1);
+                }
+            }
+
+            if (!inlinedFrames.IsEmpty())
+            {
+                OffsetMapping2* call = lastInstr;
+                OffsetMapping2* boundary = nullptr;
+
+                do
+                {
+                    boundary = inlinedFrames.Pop();
+
+                    Module *pModule=nullptr;
+                    MethodDesc *pMethod=nullptr;
+
+                    HRESULT res = pDAC->GetMethodAndModuleTknFor(boundary->method.methodToken, boundary->method.moduleToken, &pMethod, &pModule);
+
+                    call = inlinedFrames.Pop();
+                }
+                while (!inlinedFrames.IsEmpty());
+            }
+
+
+
+
+            // CorDebugMappingResult mappingType;
+            // ULONG uILOffset = pNativeCode->GetSequencePoints()->MapNativeOffsetToIL(
+            //         nativeOffsetToMap,
+            //         &mappingType);
+
+            // // Find or create the IL Code, and the pJITILFrame.
+            // RSExtSmartPtr<CordbILCode> pCode;
+
+            // // The code for populating CordbFunction ILCode looks really bizzare... it appears to only grab the
+            // // correct version of the IL if that is still the current EnC version yet it is populated deliberately
+            // // late bound at which point the latest version may be different. In fact even here the latest version
+            // // could already be different, but this is no worse than what the code used to do
+            // hr = pFunction->GetILCode(&pCode);
+            // IfFailThrow(hr);
+            // _ASSERTE(pCode != NULL);
+
+            // // We populate the code for ReJit eagerly to make sure we still have it if the profiler removes the
+            // // instrumentation later. Of course the only way it will still be accessible to our caller is if they
+            // // save a pointer to the ILCode.
+            // // I'm not sure if ignoring rejit for mini-dumps is the right call long term, but we aren't doing
+            // // anything special to collect the memory at dump time so we better be prepared to not fetch it here.
+            // // We'll attempt to treat it as not being instrumented, though I suspect the abstraction is leaky.
+            // RSSmartPtr<CordbReJitILCode> pReJitCode;
+            // EX_TRY_ALLOW_DATATARGET_MISSING_MEMORY
+            // {
+            //     VMPTR_NativeCodeVersionNode vmNativeCodeVersionNode = VMPTR_NativeCodeVersionNode::NullPtr();
+            //     IfFailThrow(GetProcess()->GetDAC()->GetNativeCodeVersionNode(pJITFuncData->vmNativeCodeMethodDescToken, pJITFuncData->nativeStartAddressPtr, &vmNativeCodeVersionNode));
+            //     if (!vmNativeCodeVersionNode.IsNull())
+            //     {
+            //         VMPTR_ILCodeVersionNode vmILCodeVersionNode = VMPTR_ILCodeVersionNode::NullPtr();
+            //         IfFailThrow(GetProcess()->GetDAC()->GetILCodeVersionNode(vmNativeCodeVersionNode, &vmILCodeVersionNode));
+            //         if (!vmILCodeVersionNode.IsNull())
+            //         {
+            //             IfFailThrow(pFunction->LookupOrCreateReJitILCode(vmILCodeVersionNode, &pReJitCode));
+            //         }
+            //     }
+            // }
+            // EX_END_CATCH_ALLOW_DATATARGET_MISSING_MEMORY
+
+
+
+            // RSInitHolder<CordbJITILFrame> pJITILFrame(new CordbJITILFrame(pNativeFrame,
+            //                                                     pCode,
+            //                                                     uILOffset,
+            //                                                     mappingType,
+            //                                                     frameData.v.exactGenericArgsToken,
+            //                                                     frameData.v.dwExactGenericArgsTokenIndex,
+            //                                                     !!frameData.v.fVarArgs,
+            //                                                     pReJitCode));
+
+            // // Initialize the frame.  This is a nop if the method is not a vararg method.
+            // hr = pJITILFrame->Init();
+            // IfFailThrow(hr);
+
+            // pNativeFrame->m_JITILFrame.Assign(pJITILFrame);
+            // pJITILFrame.ClearAndMarkDontNeuter();
+        }
+    }
+}
+
 //---------------------------------------------------------------------------------------
 //
 // Unwind the stackwalker to the next frame.
@@ -484,6 +691,7 @@ HRESULT CordbStackWalk::Next()
                 hr = CORDBG_S_AT_END_OF_STACK;
             }
         }
+        InspectInlineFunctions();
     }
     PUBLIC_REENTRANT_API_END(hr);
     return hr;
@@ -685,7 +893,7 @@ HRESULT CordbStackWalk::GetFrameWorker(ICorDebugFrame ** ppFrame)
         // then we don't have the metadata or the debug info (sequence points, etc.).
         // This means that we can't do anything meaningful with a CordbJITILFrame anyway,
         // so let's not create the CordbJITILFrame at all.  Note that methods created with
-        // RefEmit are okay, i.e. they have metadata.
+        // RefEmit are okay, stmt_index.e. they have metadata.
 
         //     The check for IsNativeImpl() != CordbFunction::kNativeOnly catches an odd profiler
         // case. A profiler can rewrite assemblies at load time so that a P/invoke becomes a
